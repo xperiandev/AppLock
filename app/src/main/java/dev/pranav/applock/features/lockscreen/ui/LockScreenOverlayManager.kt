@@ -8,6 +8,8 @@ import android.view.WindowManager
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.*
 import androidx.savedstate.SavedStateRegistry
@@ -59,71 +61,75 @@ class LockScreenOverlayManager(private val context: Context):
             setViewTreeViewModelStoreOwner(this@LockScreenOverlayManager)
 
             setContent {
-                AppLockTheme {
-                    val appLockRepository = context.appLockRepository()
-                    val appName = try {
-                        val pm = context.packageManager
-                        pm.getApplicationLabel(pm.getApplicationInfo(lockedPackageName, 0))
-                            .toString()
-                    } catch (_: Exception) {
-                        "App"
-                    }
-
-                    val onPinAttemptCallback = { pin: String ->
-                        val isValid = appLockRepository.validatePassword(pin)
-                        if (isValid) {
-                            onUnlock()
-                            removeOverlay()
+                CompositionLocalProvider(
+                    LocalOnBackPressedDispatcherOwner provides this@LockScreenOverlayManager
+                ) {
+                    AppLockTheme {
+                        val appLockRepository = context.appLockRepository()
+                        val appName = try {
+                            val pm = context.packageManager
+                            pm.getApplicationLabel(pm.getApplicationInfo(lockedPackageName, 0))
+                                .toString()
+                        } catch (_: Exception) {
+                            "App"
                         }
-                        isValid
-                    }
 
-                    val onPatternAttemptCallback = { pattern: String ->
-                        val isValid = appLockRepository.validatePattern(pattern)
-                        if (isValid) {
-                            onUnlock()
-                            removeOverlay()
-                        }
-                        isValid
-                    }
-
-                    BackHandler {
-                        onExit()
-                        removeOverlay()
-                    }
-
-                    val lockType = appLockRepository.getLockType()
-
-                    if (lockType == PreferencesRepository.LOCK_TYPE_PATTERN) {
-                        PatternLockScreen(
-                            fromMainActivity = false,
-                            lockedAppName = appName,
-                            triggeringPackageName = triggeringPackageName,
-                            onPatternAttempt = onPatternAttemptCallback
-                        )
-                    } else {
-                        PasswordOverlayScreen(
-                            showBiometricButton = appLockRepository.isBiometricAuthEnabled(),
-                            fromMainActivity = false,
-                            lockedAppName = appName,
-                            triggeringPackageName = triggeringPackageName,
-                            onAuthSuccess = {
+                        val onPinAttemptCallback = { pin: String ->
+                            val isValid = appLockRepository.validatePassword(pin)
+                            if (isValid) {
                                 onUnlock()
                                 removeOverlay()
-                            },
-                            onBiometricAuth = {
-                                val intent = Intent(
-                                    context,
-                                    TransparentBiometricActivity::class.java
-                                ).apply {
-                                    flags =
-                                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
-                                    putExtra("locked_package", lockedPackageName)
-                                }
-                                context.startActivity(intent)
-                            },
-                            onPinAttempt = onPinAttemptCallback
-                        )
+                            }
+                            isValid
+                        }
+
+                        val onPatternAttemptCallback = { pattern: String ->
+                            val isValid = appLockRepository.validatePattern(pattern)
+                            if (isValid) {
+                                onUnlock()
+                                removeOverlay()
+                            }
+                            isValid
+                        }
+
+                        BackHandler {
+                            onExit()
+                            removeOverlay()
+                        }
+
+                        val lockType = appLockRepository.getLockType()
+
+                        if (lockType == PreferencesRepository.LOCK_TYPE_PATTERN) {
+                            PatternLockScreen(
+                                fromMainActivity = false,
+                                lockedAppName = appName,
+                                triggeringPackageName = triggeringPackageName,
+                                onPatternAttempt = onPatternAttemptCallback
+                            )
+                        } else {
+                            PasswordOverlayScreen(
+                                showBiometricButton = appLockRepository.isBiometricAuthEnabled(),
+                                fromMainActivity = false,
+                                lockedAppName = appName,
+                                triggeringPackageName = triggeringPackageName,
+                                onAuthSuccess = {
+                                    onUnlock()
+                                    removeOverlay()
+                                },
+                                onBiometricAuth = {
+                                    val intent = Intent(
+                                        context,
+                                        TransparentBiometricActivity::class.java
+                                    ).apply {
+                                        flags =
+                                            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+                                        putExtra("locked_package", lockedPackageName)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                onPinAttempt = onPinAttemptCallback
+                            )
+                        }
                     }
                 }
             }
